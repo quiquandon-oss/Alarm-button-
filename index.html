@@ -263,8 +263,8 @@
   ================================================================= */
   const CONFIG = {
     CONTACTS: [
-      { phone: "34663428858", name: "My Phone" },        // <-- rename if this should be someone else
-      { phone: "34615886388", name: "My Second Phone" }  // <-- rename if this should be someone else
+      { phone: "34663428858", name: "My Phone",        channel: "sms" },      // no WhatsApp account — SMS only
+      { phone: "34615886388", name: "My Second Phone",  channel: "whatsapp" } // has WhatsApp
     ],
     MESSAGE_HEADER: "EMERGENCY - I NEED HELP",
     GEO_TIMEOUT_MS: 10000,
@@ -357,36 +357,52 @@
     return `sms:${phone}${sep}body=${encodeURIComponent(message)}`;
   }
 
+  function channelLink(contact, message){
+    return contact.channel === 'sms' ? smsLink(contact.phone, message) : whatsappLink(contact.phone, message);
+  }
+
+  function channelName(contact){
+    return contact.channel === 'sms' ? 'SMS' : 'WhatsApp';
+  }
+
   function dispatch(coords){
     const message  = buildMessage(coords);
     const contacts = CONFIG.CONTACTS;
+    // Auto-fire the WhatsApp contact first if there is one, otherwise the first contact.
+    const primary  = contacts.find(c => c.channel === 'whatsapp') || contacts[0];
 
     setState('ready');
     setStatus(
-      `Opening WhatsApp for ${contacts[0].name}…`,
+      `Opening ${channelName(primary)} for ${primary.name}…`,
       coords ? 'Your location is attached.' : 'Sending without exact location.'
     );
 
-    // Attempt the automatic hand-off to the first contact immediately.
-    openLink(whatsappLink(contacts[0].phone, message));
+    openLink(channelLink(primary, message));
 
-    // Both contacts get their own big button — WhatsApp only opens one
-    // chat at a time, so the second alert always needs one more tap
-    // after you switch back from the WhatsApp app.
+    // Every contact gets its own big button on its own channel — nothing
+    // relies on the automatic hand-off working, and each alert needs one
+    // more tap after switching back from WhatsApp/Messages anyway.
     clearActions();
     contacts.forEach((c) => {
-      addAction(`📲  Alert ${c.name} (WhatsApp)`, () => {
-        openLink(whatsappLink(c.phone, message));
+      const icon = c.channel === 'sms' ? '✉️' : '📲';
+      addAction(`${icon}  Alert ${c.name} (${channelName(c)})`, () => {
+        openLink(channelLink(c, message));
       }, 'btn-primary');
     });
-    addAction('✉️  Trouble with WhatsApp? Send SMS instead', (ev) => {
-      ev.target.remove();
-      contacts.forEach((c) => {
-        addAction(`✉️  SMS ${c.name}`, () => {
-          openLink(smsLink(c.phone, message));
-        }, 'btn-secondary');
-      });
-    }, 'btn-quiet');
+
+    // Safety net: if a WhatsApp contact's message doesn't go through,
+    // offer SMS as a backup for that contact too.
+    const whatsappContacts = contacts.filter(c => c.channel === 'whatsapp');
+    if(whatsappContacts.length){
+      addAction('✉️  Trouble with WhatsApp? Send SMS instead', (ev) => {
+        ev.target.remove();
+        whatsappContacts.forEach((c) => {
+          addAction(`✉️  SMS ${c.name}`, () => {
+            openLink(smsLink(c.phone, message));
+          }, 'btn-secondary');
+        });
+      }, 'btn-quiet');
+    }
     addAction('Start over', resetToIdle, 'btn-quiet');
   }
 
