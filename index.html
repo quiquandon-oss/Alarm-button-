@@ -333,8 +333,23 @@
     return `🚨 ${CONFIG.MESSAGE_HEADER} 🚨\nI could not get an exact GPS location — please call me right now.\nSent: ${time}`;
   }
 
+  function openLink(url){
+    // A real <a> click is handled more reliably by Android's app-link
+    // resolver than assigning to location.href — some devices drop the
+    // pre-filled text when the navigation isn't a "real" link tap.
+    const a = document.createElement('a');
+    a.href = url;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
   function whatsappLink(phone, message){
-    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    // api.whatsapp.com/send is WhatsApp's direct endpoint — more reliable
+    // than the wa.me short-link for carrying the pre-filled text through
+    // on some Android OEM browsers.
+    return `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
   }
 
   function smsLink(phone, message){
@@ -353,7 +368,7 @@
     );
 
     // Attempt the automatic hand-off to the first contact immediately.
-    window.location.href = whatsappLink(contacts[0].phone, message);
+    openLink(whatsappLink(contacts[0].phone, message));
 
     // Both contacts get their own big button — WhatsApp only opens one
     // chat at a time, so the second alert always needs one more tap
@@ -361,14 +376,14 @@
     clearActions();
     contacts.forEach((c) => {
       addAction(`📲  Alert ${c.name} (WhatsApp)`, () => {
-        window.location.href = whatsappLink(c.phone, message);
+        openLink(whatsappLink(c.phone, message));
       }, 'btn-primary');
     });
     addAction('✉️  Trouble with WhatsApp? Send SMS instead', (ev) => {
       ev.target.remove();
       contacts.forEach((c) => {
         addAction(`✉️  SMS ${c.name}`, () => {
-          window.location.href = smsLink(c.phone, message);
+          openLink(smsLink(c.phone, message));
         }, 'btn-secondary');
       });
     }, 'btn-quiet');
