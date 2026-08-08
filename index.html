@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- viewport-fit=cover lets us pad around notches/home-indicators on phones -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Emergency SOS</title>
+
+<!-- ============================================================
+     PWA METADATA
+     For real "Add to Home Screen" behaviour you need manifest.json,
+     sw.js and icon.svg sitting next to this file (all three are
+     provided alongside this index.html). Same folder, same host.
+     ============================================================ -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="theme-color" content="#0B0B0D">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SOS">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
+
+<style>
+  /* ---------------------------------------------------------------
+     TOKENS
+  --------------------------------------------------------------- */
+  :root{
+    --bg:        #0B0B0D;
+    --bg-raised: #17171B;
+    --text:      #F5F5F5;
+    --text-dim:  #9A9AA4;
+    --red:       #D7263D;
+    --red-dim:   #8f1b29;
+    --red-glow:  rgba(215,38,61,0.35);
+    --amber:     #FFB020;
+    --amber-dim: rgba(255,176,32,0.35);
+    --green:     #2ECC71;
+    --green-dim: rgba(46,204,113,0.35);
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+  html,body{
+    height:100%;
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overscroll-behavior:none;
+    /* Elderly-friendly: never let the OS silently shrink text on us */
+    -webkit-text-size-adjust:100%;
+  }
+
+  body{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:space-between;
+    min-height:100dvh;
+    padding: calc(24px + var(--safe-t)) 20px calc(24px + var(--safe-b));
+    text-align:center;
+    user-select:none;
+  }
+
+  header{
+    font-size:15px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--text-dim);
+    font-weight:600;
+  }
+  header .contact-name{ color:var(--text); font-weight:700; }
+
+  /* ---------------------------------------------------------------
+     THE BUTTON + BREATHING RINGS  (signature element)
+  --------------------------------------------------------------- */
+  .stage{
+    position:relative;
+    width:min(78vw,320px);
+    height:min(78vw,320px);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex:0 0 auto;
+  }
+
+  .ring{
+    position:absolute;
+    inset:0;
+    border-radius:50%;
+    border:2px solid var(--red-dim);
+    opacity:0;
+    animation: breathe 3.2s ease-out infinite;
+  }
+  .ring:nth-child(2){ animation-delay:1.05s; }
+  .ring:nth-child(3){ animation-delay:2.1s; }
+
+  @keyframes breathe{
+    0%   { transform:scale(0.72); opacity:.55; }
+    70%  { opacity:0; }
+    100% { transform:scale(1.28); opacity:0; }
+  }
+
+  #sosBtn{
+    position:relative;
+    z-index:2;
+    width:min(62vw,260px);
+    height:min(62vw,260px);
+    min-width:250px;
+    min-height:250px;
+    border-radius:50%;
+    border:none;
+    background:radial-gradient(circle at 34% 30%, #ef4f63, var(--red) 55%, var(--red-dim) 100%);
+    color:#fff;
+    font-size:44px;
+    font-weight:800;
+    letter-spacing:.06em;
+    box-shadow:0 0 0 6px rgba(215,38,61,.15), 0 14px 40px rgba(215,38,61,.45);
+    cursor:pointer;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    transition:transform .12s ease, box-shadow .2s ease, filter .2s ease;
+  }
+  #sosBtn .sub{
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    opacity:.9;
+  }
+  #sosBtn:active:not(:disabled){ transform:scale(0.96); }
+  #sosBtn:focus-visible{ outline:4px solid #fff; outline-offset:6px; }
+
+  #sosBtn:disabled{
+    cursor:not-allowed;
+    filter:grayscale(.15) brightness(.85);
+  }
+
+  /* State skins swap the ring colour + button glow so status is
+     readable at a glance even without reading the text. */
+  .stage.state-locating .ring{ border-color:var(--amber-dim); animation:none; opacity:1; }
+  .stage.state-locating .ring:nth-child(1){ animation:spin 1.1s linear infinite; border-top-color:var(--amber); }
+  .stage.state-locating .ring:nth-child(2){ animation:spin 1.6s linear infinite reverse; border-top-color:var(--amber); opacity:.6;}
+  .stage.state-locating .ring:nth-child(3){ display:none; }
+  @keyframes spin{ to{ transform:rotate(360deg);} }
+
+  .stage.state-ready #sosBtn{
+    background:radial-gradient(circle at 34% 30%, #3fe089, var(--green) 55%, #1f9d59 100%);
+    box-shadow:0 0 0 6px var(--green-dim), 0 14px 40px rgba(46,204,113,.45);
+  }
+  .stage.state-ready .ring{ border-color:var(--green-dim); }
+
+  .stage.state-error #sosBtn{
+    background:radial-gradient(circle at 34% 30%, #ffcb6b, var(--amber) 55%, #b3780f 100%);
+    box-shadow:0 0 0 6px var(--amber-dim), 0 14px 40px rgba(255,176,32,.45);
+  }
+  .stage.state-error .ring{ border-color:var(--amber-dim); }
+  .stage.state-error #sosBtn{ animation: shake .5s ease; }
+  @keyframes shake{
+    0%,100%{ transform:translateX(0);}
+    20%{ transform:translateX(-6px);}
+    40%{ transform:translateX(6px);}
+    60%{ transform:translateX(-4px);}
+    80%{ transform:translateX(4px);}
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .ring, #sosBtn{ animation:none !important; }
+  }
+
+  /* ---------------------------------------------------------------
+     STATUS + ACTIONS
+  --------------------------------------------------------------- */
+  #status{
+    font-size:22px;
+    font-weight:600;
+    line-height:1.35;
+    min-height:2.7em;
+    max-width:420px;
+    margin-top:6px;
+  }
+  #detail{
+    font-size:16px;
+    color:var(--text-dim);
+    max-width:380px;
+    line-height:1.5;
+  }
+
+  .actions{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    width:100%;
+    max-width:360px;
+    min-height:0;
+  }
+
+  .btn{
+    display:block;
+    width:100%;
+    padding:16px 18px;
+    border-radius:16px;
+    font-size:18px;
+    font-weight:700;
+    text-decoration:none;
+    border:2px solid transparent;
+    cursor:pointer;
+  }
+  .btn-primary{ background:var(--green); color:#062b17; }
+  .btn-secondary{ background:transparent; color:var(--text); border-color:#3a3a40; }
+  .btn-quiet{ background:transparent; color:var(--text-dim); font-size:15px; padding:8px; font-weight:600; }
+
+  .hidden{ display:none !important; }
+
+  footer{
+    font-size:13px;
+    color:var(--text-dim);
+    max-width:340px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  Emergency Alert &middot; sends to <span class="contact-name" id="contactNameLabel">—</span>
+</header>
+
+<div class="stage" id="stage">
+  <div class="ring"></div>
+  <div class="ring"></div>
+  <div class="ring"></div>
+  <button id="sosBtn" type="button" aria-describedby="status">
+    SOS
+    <span class="sub">Press for help</span>
+  </button>
+</div>
+
+<!-- aria-live so a screen reader speaks every status change automatically -->
+<div id="status" role="status" aria-live="polite">Press the button to send an alert.</div>
+<div id="detail"></div>
+
+<div class="actions" id="actions"></div>
+
+<footer>
+  This device will share your GPS location. Nothing is stored after the alert is sent.
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* =================================================================
+     CONFIGURATION  —  edit these two lines before deploying
+     Phone must be digits only, country code first, no + no spaces
+     e.g. UK number 07123 456789  ->  "447123456789"
+  ================================================================= */
+  const CONFIG = {
+    CONTACT_PHONE: "34663428858",   // <-- REPLACE with real WhatsApp/SMS number
+    CONTACT_NAME:  "Family Contact", // <-- shown on-screen so it's easy to verify
+    MESSAGE_HEADER: "EMERGENCY - I NEED HELP",
+    GEO_TIMEOUT_MS: 10000,
+    MIN_BUTTON_LOCK_MS: 3000        // stops rapid double/triple presses
+  };
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+  // ---- element refs ----
+  const stage   = document.getElementById('stage');
+  const btn     = document.getElementById('sosBtn');
+  const status  = document.getElementById('status');
+  const detail  = document.getElementById('detail');
+  const actions = document.getElementById('actions');
+  document.getElementById('contactNameLabel').textContent = CONFIG.CONTACT_NAME;
+
+  // Kept only in memory for this page session — never written to disk —
+  // so a second attempt can fall back to it if a fresh GPS fix fails.
+  let lastKnownPosition = null;
+  let unlockTimer = null;
+
+  function setState(name){
+    stage.classList.remove('state-locating','state-ready','state-error');
+    if(name) stage.classList.add('state-' + name);
+  }
+
+  function setStatus(main, sub){
+    status.textContent = main;
+    detail.textContent = sub || '';
+  }
+
+  function clearActions(){ actions.innerHTML = ''; }
+
+  function addAction(label, onClick, variant){
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn ' + (variant || 'btn-secondary');
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    actions.appendChild(b);
+    return b;
+  }
+
+  function lockButton(){
+    btn.disabled = true;
+    clearTimeout(unlockTimer);
+    unlockTimer = setTimeout(() => { btn.disabled = false; }, CONFIG.MIN_BUTTON_LOCK_MS);
+  }
+
+  function readyForAnotherPress(){
+    // Respects the minimum lock window started in lockButton().
+    if (!unlockTimer) btn.disabled = false;
+  }
+
+  /* -----------------------------------------------------------------
+     MESSAGE + LINK BUILDING
+  ----------------------------------------------------------------- */
+  function buildMessage(coords){
+    const time = new Date().toLocaleString();
+    if(coords){
+      const mapsUrl = `https://www.google.com/maps?q=${coords.lat},${coords.lon}`;
+      const accuracy = coords.accuracy ? ` (accuracy ~${Math.round(coords.accuracy)}m)` : '';
+      return `🚨 ${CONFIG.MESSAGE_HEADER} 🚨\nMy location: ${mapsUrl}${accuracy}\nSent: ${time}`;
+    }
+    return `🚨 ${CONFIG.MESSAGE_HEADER} 🚨\nI could not get an exact GPS location — please call me right now.\nSent: ${time}`;
+  }
+
+  function whatsappLink(message){
+    return `https://wa.me/${CONFIG.CONTACT_PHONE}?text=${encodeURIComponent(message)}`;
+  }
+
+  function smsLink(message){
+    const sep = isIOS ? '&' : '?';
+    return `sms:${CONFIG.CONTACT_PHONE}${sep}body=${encodeURIComponent(message)}`;
+  }
+
+  function dispatch(coords){
+    const message = buildMessage(coords);
+    const waLink  = whatsappLink(message);
+    const smsUrl  = smsLink(message);
+
+    setState('ready');
+    setStatus('Opening WhatsApp…', coords ? 'Your location is attached.' : 'Sending without exact location.');
+
+    // Attempt the automatic hand-off to WhatsApp immediately.
+    window.location.href = waLink;
+
+    // A visible fallback in case the automatic hand-off is blocked —
+    // one extra tap finishes the job, so nothing depends on it working.
+    clearActions();
+    addAction('📲  Tap to send via WhatsApp', () => { window.location.href = waLink; }, 'btn-primary');
+    addAction('✉️  Send by SMS instead', () => { window.location.href = smsUrl; }, 'btn-secondary');
+    addAction('Start over', resetToIdle, 'btn-quiet');
+  }
+
+  function resetToIdle(){
+    clearTimeout(unlockTimer); unlockTimer = null;
+    setState(null);
+    setStatus('Press the button to send an alert.', '');
+    clearActions();
+    btn.disabled = false;
+  }
+
+  /* -----------------------------------------------------------------
+     GEOLOCATION
+  ----------------------------------------------------------------- */
+  function getLocation(onSuccess, onError){
+    if(!('geolocation' in navigator)){
+      onError({ code: 0, message: 'Geolocation not supported' });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = {
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          accuracy: pos.coords.accuracy
+        };
+        lastKnownPosition = { coords, at: Date.now() };
+        onSuccess(coords);
+      },
+      onError,
+      {
+        enableHighAccuracy: true,
+        timeout: CONFIG.GEO_TIMEOUT_MS,
+        maximumAge: 0
+      }
+    );
+  }
+
+  function handleGeoError(err){
+    setState('error');
+    clearActions();
+
+    const ageNote = lastKnownPosition
+      ? `Last known location is ${Math.round((Date.now()-lastKnownPosition.at)/60000)} min old.`
+      : null;
+
+    if(err.code === 1){ // PERMISSION_DENIED
+      setStatus(
+        'Location access is turned off.',
+        'Open your phone Settings → Apps → Browser → Permissions → Location, turn it on, then press SOS again.'
+      );
+    } else if(err.code === 2){ // POSITION_UNAVAILABLE
+      setStatus('Could not find your location.', 'Check that GPS/Location is switched on for your phone, then try again.');
+    } else if(err.code === 3){ // TIMEOUT
+      setStatus('Location is taking too long.', 'This can happen indoors or with a weak signal.');
+    } else {
+      setStatus('This phone can\u2019t get GPS location.', 'The alert can still be sent without it.');
+    }
+
+    addAction('🔁  Try again', () => { startFlow(); }, 'btn-secondary');
+    if(lastKnownPosition){
+      addAction('📍  Send with last known location', () => { dispatch(lastKnownPosition.coords); }, 'btn-primary');
+    }
+    addAction('🚨  Send alert without location', () => { dispatch(null); }, lastKnownPosition ? 'btn-secondary' : 'btn-primary');
+
+    readyForAnotherPress();
+  }
+
+  function startFlow(){
+    lockButton();
+    setState('locating');
+    clearActions();
+    setStatus('Getting your location…', 'This can take a few seconds.');
+
+    getLocation(
+      (coords) => dispatch(coords),
+      (err) => handleGeoError(err)
+    );
+  }
+
+  btn.addEventListener('click', startFlow);
+
+  /* -----------------------------------------------------------------
+     PRE-REQUEST PERMISSION ON FIRST LAUNCH
+     Quietly asks for location once on load so the permission dialog
+     is out of the way before a real emergency happens.
+  ----------------------------------------------------------------- */
+  window.addEventListener('load', () => {
+    if('geolocation' in navigator){
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          lastKnownPosition = {
+            coords: { lat: pos.coords.latitude, lon: pos.coords.longitude, accuracy: pos.coords.accuracy },
+            at: Date.now()
+          };
+        },
+        () => { /* silently ignore — real errors are surfaced when SOS is pressed */ },
+        { enableHighAccuracy: true, timeout: CONFIG.GEO_TIMEOUT_MS, maximumAge: 60000 }
+      );
+    }
+
+    // Register the service worker so the shell loads even with no signal.
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('sw.js').catch(() => { /* offline shell is a nice-to-have, not critical */ });
+    }
+  });
+
+})();
+</script>
+</body>
+</html>

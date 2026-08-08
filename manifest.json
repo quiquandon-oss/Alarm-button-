@@ -1,0 +1,19 @@
+{
+  "name": "Emergency SOS",
+  "short_name": "SOS",
+  "description": "One-tap emergency alert with GPS location, sent straight to a family contact.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B0B0D",
+  "theme_color": "#0B0B0D",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
