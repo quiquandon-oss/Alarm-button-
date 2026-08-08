@@ -262,8 +262,10 @@
      e.g. UK number 07123 456789  ->  "447123456789"
   ================================================================= */
   const CONFIG = {
-    CONTACT_PHONE: "34663428858",   // <-- REPLACE with real WhatsApp/SMS number
-    CONTACT_NAME:  "Family Contact", // <-- shown on-screen so it's easy to verify
+    CONTACTS: [
+      { phone: "34663428858", name: "My Phone" },        // <-- rename if this should be someone else
+      { phone: "34615886388", name: "My Second Phone" }  // <-- rename if this should be someone else
+    ],
     MESSAGE_HEADER: "EMERGENCY - I NEED HELP",
     GEO_TIMEOUT_MS: 10000,
     MIN_BUTTON_LOCK_MS: 3000        // stops rapid double/triple presses
@@ -277,7 +279,8 @@
   const status  = document.getElementById('status');
   const detail  = document.getElementById('detail');
   const actions = document.getElementById('actions');
-  document.getElementById('contactNameLabel').textContent = CONFIG.CONTACT_NAME;
+  document.getElementById('contactNameLabel').textContent =
+    CONFIG.CONTACTS.map(c => c.name).join(' & ');
 
   // Kept only in memory for this page session — never written to disk —
   // so a second attempt can fall back to it if a fresh GPS fix fails.
@@ -330,31 +333,45 @@
     return `🚨 ${CONFIG.MESSAGE_HEADER} 🚨\nI could not get an exact GPS location — please call me right now.\nSent: ${time}`;
   }
 
-  function whatsappLink(message){
-    return `https://wa.me/${CONFIG.CONTACT_PHONE}?text=${encodeURIComponent(message)}`;
+  function whatsappLink(phone, message){
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   }
 
-  function smsLink(message){
+  function smsLink(phone, message){
     const sep = isIOS ? '&' : '?';
-    return `sms:${CONFIG.CONTACT_PHONE}${sep}body=${encodeURIComponent(message)}`;
+    return `sms:${phone}${sep}body=${encodeURIComponent(message)}`;
   }
 
   function dispatch(coords){
-    const message = buildMessage(coords);
-    const waLink  = whatsappLink(message);
-    const smsUrl  = smsLink(message);
+    const message  = buildMessage(coords);
+    const contacts = CONFIG.CONTACTS;
 
     setState('ready');
-    setStatus('Opening WhatsApp…', coords ? 'Your location is attached.' : 'Sending without exact location.');
+    setStatus(
+      `Opening WhatsApp for ${contacts[0].name}…`,
+      coords ? 'Your location is attached.' : 'Sending without exact location.'
+    );
 
-    // Attempt the automatic hand-off to WhatsApp immediately.
-    window.location.href = waLink;
+    // Attempt the automatic hand-off to the first contact immediately.
+    window.location.href = whatsappLink(contacts[0].phone, message);
 
-    // A visible fallback in case the automatic hand-off is blocked —
-    // one extra tap finishes the job, so nothing depends on it working.
+    // Both contacts get their own big button — WhatsApp only opens one
+    // chat at a time, so the second alert always needs one more tap
+    // after you switch back from the WhatsApp app.
     clearActions();
-    addAction('📲  Tap to send via WhatsApp', () => { window.location.href = waLink; }, 'btn-primary');
-    addAction('✉️  Send by SMS instead', () => { window.location.href = smsUrl; }, 'btn-secondary');
+    contacts.forEach((c) => {
+      addAction(`📲  Alert ${c.name} (WhatsApp)`, () => {
+        window.location.href = whatsappLink(c.phone, message);
+      }, 'btn-primary');
+    });
+    addAction('✉️  Trouble with WhatsApp? Send SMS instead', (ev) => {
+      ev.target.remove();
+      contacts.forEach((c) => {
+        addAction(`✉️  SMS ${c.name}`, () => {
+          window.location.href = smsLink(c.phone, message);
+        }, 'btn-secondary');
+      });
+    }, 'btn-quiet');
     addAction('Start over', resetToIdle, 'btn-quiet');
   }
 
