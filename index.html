@@ -232,21 +232,23 @@
   Emergency Alert &middot; sends to <span class="contact-name" id="contactNameLabel">—</span>
 </header>
 
-<div class="stage" id="stage">
-  <div class="ring"></div>
-  <div class="ring"></div>
-  <div class="ring"></div>
-  <button id="sosBtn" type="button" aria-describedby="status">
-    SOS
-    <span class="sub">Press for help</span>
-  </button>
-</div>
+<main style="display:flex; flex-direction:column; align-items:center; width:100%;">
+  <div class="stage" id="stage">
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <button id="sosBtn" type="button" aria-describedby="status">
+      SOS
+      <span class="sub">Press for help</span>
+    </button>
+  </div>
 
-<!-- aria-live so a screen reader speaks every status change automatically -->
-<div id="status" role="status" aria-live="polite">Press the button to send an alert.</div>
-<div id="detail"></div>
+  <!-- aria-live so a screen reader speaks every status change automatically -->
+  <div id="status" role="status" aria-live="polite">Press the button to send an alert.</div>
+  <div id="detail"></div>
 
-<div class="actions" id="actions"></div>
+  <div class="actions" id="actions"></div>
+</main>
 
 <footer>
   This device will share your GPS location. Nothing is stored after the alert is sent.
@@ -273,7 +275,7 @@
     MIN_BUTTON_LOCK_MS: 3000        // stops rapid double/triple presses
   };
 
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
   // ---- element refs ----
   const stage   = document.getElementById('stage');
